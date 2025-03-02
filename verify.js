@@ -528,7 +528,10 @@ function saveToCSV(data, filename) {
   return filePath;
 }
 
-// SSE Progress & Credit Update
+app.get("/", (req, res) => {
+  res.send("🚀 Lead List Verifier API is running!");
+});
+
 app.get("/progress", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
