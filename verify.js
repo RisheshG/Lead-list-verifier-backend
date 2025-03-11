@@ -205,7 +205,7 @@ app.post("/verify", authenticate, upload.single("file"), async (req, res) => {
     });
 
     // Add a small delay between batches to avoid overwhelming the server
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 5000)); // 5-second delay
   }
 
   console.log(`Verified Emails: ${completedCount}`);
@@ -318,60 +318,90 @@ app.get("/credits/:userId", async (req, res) => {
 async function verifyEmail(email) {
   const domain = email.split("@")[1];
 
-  // Step 1: Check if the domain is disposable
+  // Step 1: Validate email syntax (Basic validation)
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return "invalid";
+  }
+
+  // Step 2: Check if the domain is disposable
   if (isDisposableDomain(domain)) {
-    return "invalid"; // Disposable domains are considered invalid
+    return "invalid";
   }
 
-  // Step 2: Suggest domain typo corrections
-  const correctedDomain = suggestDomain(domain);
-  if (correctedDomain !== domain) {
-    console.log(`Domain ${domain} may be misspelled. Suggested domain: ${correctedDomain}`);
+  // Step 3: Check if the domain is blacklisted
+
+  // Step 4: Check if the host exists
+  const hostExists = await checkHostExists(domain);
+  if (!hostExists) {
+    return "invalid";
   }
 
-  // Step 3: Check MX Records
+  // Step 5: Check MX records
   let mxRecords = await getMXRecords(domain);
   if (mxRecords.length === 0) {
     // Fallback to A records if no MX records are found
     const aRecords = await getARecords(domain);
     if (aRecords.length === 0) {
-      return "invalid"; // No MX or A records found
+      return "invalid";
     }
-    mxRecords = aRecords; // Use A records as fallback
+    mxRecords = aRecords;
   }
 
-  // Step 4: Check SMTP Response
+  // Step 6: Check SMTP response with rate limiting
   const status = await checkSMTP(email, mxRecords[0]);
-  return status;
+  if (status === "invalid") {
+    return "invalid";
+  }
+
+  // Step 7: Check if the server is catch-all
+  const isCatchAll = await detectCatchAllServer(mxRecords[0], domain);
+  if (isCatchAll) {
+    return "catchAll";
+  }
+
+  // Step 8: Check if the user's mailbox is full
+  const isMailboxFull = await checkMailboxFull(email, mxRecords[0]);
+  if (isMailboxFull) {
+    return "invalid";
+  }
+
+  return "valid";
 }
 
-// Function to check if a domain is disposable
 function isDisposableDomain(domain) {
   return disposableDomains.has(domain);
 }
 
-// Function to suggest corrections for domain typos
-function suggestDomain(domain) {
-  return domainTypos[domain] || domain;
+function isBlacklistedDomain(domain) {
+  return blacklistedDomains.has(domain);
 }
 
-// Function to retrieve A records
-function getARecords(domain) {
-  return new Promise(resolve => {
+async function checkHostExists(domain) {
+  return new Promise((resolve) => {
+    dns.resolve(domain, "A", (err, addresses) => {
+      resolve(!err && addresses.length > 0);
+    });
+  });
+}
+
+async function getMXRecords(domain) {
+  return new Promise((resolve) => {
+    dns.resolveMx(domain, (err, addresses) => {
+      resolve(err || !addresses.length ? [] : addresses.map((record) => record.exchange));
+    });
+  });
+}
+
+async function getARecords(domain) {
+  return new Promise((resolve) => {
     dns.resolve(domain, "A", (err, addresses) => {
       resolve(err || !addresses.length ? [] : addresses);
     });
   });
 }
 
-// Improved SMTP check function with catch-all detection
 async function checkSMTP(email, mxServer) {
-  const isCatchAll = await detectCatchAllServer(mxServer, email.split("@")[1]);
-  if (isCatchAll) {
-    return "catchAll";
-  }
-
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     let socket = net.createConnection(25, mxServer);
     let resolved = false;
 
@@ -387,7 +417,7 @@ async function checkSMTP(email, mxServer) {
       socket.end();
     });
 
-    socket.on("data", data => {
+    socket.on("data", (data) => {
       if (!resolved) {
         const response = data.toString();
         if (response.includes("250")) {
@@ -413,10 +443,9 @@ async function checkSMTP(email, mxServer) {
   });
 }
 
-// Function to detect catch-all servers
 async function detectCatchAllServer(mxServer, domain) {
   const testEmail = `nonexistent-${Date.now()}@${domain}`;
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     let socket = net.createConnection(25, mxServer);
     let resolved = false;
 
@@ -432,15 +461,55 @@ async function detectCatchAllServer(mxServer, domain) {
       socket.end();
     });
 
-    socket.on("data", data => {
+    socket.on("data", (data) => {
       if (!resolved) {
         const response = data.toString();
         if (response.includes("250") || response.includes("252")) {
           resolved = true;
-          resolve(true); // Server is catch-all
+          resolve(true);
         } else {
           resolved = true;
-          resolve(false); // Server is not catch-all
+          resolve(false);
+        }
+      }
+    });
+
+    socket.on("error", () => {
+      if (!resolved) resolve(false);
+    });
+
+    socket.on("close", () => {
+      if (!resolved) resolve(false);
+    });
+  });
+}
+
+async function checkMailboxFull(email, mxServer) {
+  return new Promise((resolve) => {
+    let socket = net.createConnection(25, mxServer);
+    let resolved = false;
+
+    socket.setTimeout(5000, () => {
+      if (!resolved) resolve(false);
+      socket.destroy();
+    });
+
+    socket.on("connect", () => {
+      socket.write(`HELO example.com\r\n`);
+      socket.write(`MAIL FROM: <test@example.com>\r\n`);
+      socket.write(`RCPT TO: <${email}>\r\n`);
+      socket.end();
+    });
+
+    socket.on("data", (data) => {
+      if (!resolved) {
+        const response = data.toString();
+        if (response.includes("452") || response.includes("521")) {
+          resolved = true;
+          resolve(true);
+        } else {
+          resolved = true;
+          resolve(false);
         }
       }
     });
@@ -547,10 +616,7 @@ function saveToCSV(data, filename) {
   return filePath;
 }
 
-app.get("/", (req, res) => {
-  res.send("🚀 Lead List Verifier API is running!");
-});
-
+// SSE Progress & Credit Update
 app.get("/progress", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
