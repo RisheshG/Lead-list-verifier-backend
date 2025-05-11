@@ -15,7 +15,7 @@ const serviceAccount = {
   type: process.env.FIREBASE_TYPE,
   project_id: process.env.FIREBASE_PROJECT_ID,
   private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-  private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'), // Fix newlines
+  private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
   client_email: process.env.FIREBASE_CLIENT_EMAIL,
   client_id: process.env.FIREBASE_CLIENT_ID,
   auth_uri: process.env.FIREBASE_AUTH_URI,
@@ -51,18 +51,6 @@ const disposableDomains = new Set([
   "10minutemail.com",
   // Add more disposable domains here
 ]);
-
-// Common domain typos and their corrections
-const domainTypos = {
-  "gmai.com": "gmail.com",
-  "gmal.com": "gmail.com",
-  "gmaill.com": "gmail.com",
-  "yahooo.com": "yahoo.com",
-  "yaho.com": "yahoo.com",
-  "hotmal.com": "hotmail.com",
-  "hotmai.com": "hotmail.com",
-  // Add more domain typos here
-};
 
 // SSE Progress & Credit Update
 app.get("/progress", (req, res) => {
