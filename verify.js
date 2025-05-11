@@ -49,7 +49,6 @@ const disposableDomains = new Set([
   "guerrillamail.com",
   "yopmail.com",
   "10minutemail.com",
-  // Add more disposable domains here
 ]);
 
 // SSE Progress & Credit Update
@@ -81,7 +80,7 @@ async function authenticate(req, res, next) {
 
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    req.user = decodedToken; // Attach user data to the request object
+    req.user = decodedToken;
     next();
   } catch (error) {
     console.error('Error verifying token:', error);
@@ -98,7 +97,6 @@ app.post("/login", async (req, res) => {
   }
 
   try {
-    // Use Firebase Admin SDK to generate a custom token
     const user = await admin.auth().getUserByEmail(email);
     const token = await admin.auth().createCustomToken(user.uid);
 
@@ -109,9 +107,8 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// Main verification route for bulk emails
 app.post("/verify", authenticate, upload.single("file"), async (req, res) => {
-  const userId = req.user.uid; // Get user ID from the authenticated request
+  const userId = req.user.uid;
 
   if (!req.file || !req.body.column) {
     return res.status(400).json({ error: "File or column not provided." });
