@@ -144,8 +144,7 @@ app.post("/verify", authenticate, upload.single("file"), async (req, res) => {
 
   sendProgressUpdate(0);
 
-  // Batch size for parallel processing
-  const batchSize = 10; // Adjust this based on your server's capacity
+  const batchSize = 10;
   let completedCount = 0;
 
   for (let i = 0; i < emails.length; i += batchSize) {
