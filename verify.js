@@ -144,7 +144,7 @@ app.post("/verify", authenticate, upload.single("file"), async (req, res) => {
 
   sendProgressUpdate(0);
 
-  const batchSize = 10;
+  const batchSize = 20;
   let completedCount = 0;
 
   for (let i = 0; i < emails.length; i += batchSize) {
